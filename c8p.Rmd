@@ -1,0 +1,110 @@
+---
+title: 'Course 8: Prediction Assignment'
+author: "Walid K."
+date: "10/07/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+## Summary
+
+In this project, we are going to use data about human movement in order to predict the type of the activity. The data set was collected from a group of participants in the experience, which have taken measurements about themselves regularly using devices on the belt, forearm, arm, and dumbbell.
+
+The data for this project is kindly provided by:
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H.: Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). Stuttgart, Germany: ACM SIGCHI, 2013.
+
+A better description of the technical configuration used in the experience can be found in the Human Activity Recognition web page <http://groupware.les.inf.puc-rio.br/har>.
+
+## Exploratory data analysis
+
+```{r}
+# loading datasets
+df_train <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+df_test <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv") 
+```
+
+First of all, we must take a look at the data in order to understand its structure.
+```{r echo=FALSE, message=FALSE, results=FALSE}
+# training and testing dataframe dimensions
+dim(df_train)
+dim(df_test)
+# training and testing dataframe structures
+str(df_train)
+str(df_test)
+```
+
+The training set is about 19622 observations of 160 variables. The activity type is given in the variable class (5 levels factor variable). The testing set is about 20 observations and 160 variables. The class variable is not presented in the testing set, and it is replaced with a problem id. The main purpose of this project is to predict this column.
+
+# Features selection and dataset scilicing
+
+The data set include 160 variables, we must investigate those features in order to eliminate the usefulness ones in our prediction model. As precised in the project instruction, we are interested 
+to data collected from sensors on the belt, forearm, arm, and dumbbell. We are going to identify only features related to the raw measurements from the sensors located on those part of the body. Each sensor has data presented in variables related to the Euler angles (roll, pitch, and yaw) and accelerometer, gyroscope, and magnetometer. As a first step in our features selection, we are going to use only columns with the following name patterns.
+
+```{r}
+# selecting the useful features for the model
+my_names <- names(df_train)
+features_select <- c(grep("^accel", my_names), grep("^gyros", my_names), grep("^magnet", my_names),
+                    grep("^roll", my_names), grep("^pitch", my_names), grep("^yaw", my_names),
+                    grep("^total", my_names))
+# setting the new dataframes with selected features
+df_train_new <- df_train[, c(features_select, 160)]
+df_test_new <- df_test[, c(features_select, 160)]
+```
+
+And now we have to investigate new data-sets:
+
+```{r echo=TRUE, message=FALSE}
+# new dimensions
+dim(df_train_new)
+dim(df_test_new)
+# looking for missing values
+sum(is.na(df_train_new))
+sum(is.na(df_test_new))
+```
+
+The `df_test_new` must be used only in the prediction on the very end of the project. So we have to create a partition of the `df_train_new` in order to evaluate our model during the training process.
+
+```{r echo=TRUE, message=FALSE}
+library(caret)
+# create a trainig and testing datasets
+inTrain <- createDataPartition(y = df_train_new$classe, p = 0.8, list = FALSE)
+training <- df_train_new[inTrain, ]
+testing <- df_train_new[-inTrain, ]
+```
+
+In addition to the training/testing partition, we also use an automated cross-validation within the training data-set fitting process by using the trainControl function in order to increase the accuracy of the model. We are going to use only 5 folds in order to have a reasonable execution time.
+
+```{r echo=TRUE, message=FALSE}
+# setting the automated cross-validation
+cv_control <- trainControl(method = "cv", number = 5)
+```
+
+## Prediction Model
+
+Given the size of the data set and the limited calculation capacity of my CPU, the default Random Forest and Boosting algorithm was unable to finish the fitting process. 
+
+The decision tree algorithm did not perform very well within the data set and it was only able to achieve an accuracy about 50 % on the testing data. The Linear Discriminant Analysis (lda) model did better and he achieved a prediction accuracy of 70 %.
+
+The best prediction accuracy was achieved using the Quadratic Discriminant Analysis model which perform a 89 % accuracy on the training data-set.
+
+```{r echo=TRUE, message=FALSE}
+# training the algorithm
+fit_qda <- train(classe ~ ., data=training, method ="qda", trControl = cv_control)
+# confusion matrix
+confusionMatrix(testing$classe, predict(fit_qda, testing))
+```
+
+# Prediction
+
+Given our fitted model, we are now able to perform prediction on the `df_test_new` : 
+```{r echo=TRUE, message=FALSE}
+# prediction
+pred <- predict(fit_qda, df_test_new[, -53])
+results <- data.frame(row.names=df_test_new[,53], prediction=pred)
+results
+```
